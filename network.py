@@ -170,6 +170,7 @@ class Network:
 
         return current
 
+    # Backpropagate normally
     def backpropagate(self, inputData, targetData, **kwargs):
         # For improved speed when we are sure that the data is correct
         if "noCheck" in kwargs:
@@ -216,6 +217,7 @@ class Network:
                 layerT = self._layers[i].T
                 errors[i - 1] = layerT @ errors[i]
 
+    # Backpropagation for a GAN, except it ignores the discriminator and just calculates the errors
     def backpropagateNonDual(self, inputData, **kwargs):
         # For improved speed when we are sure that the data is correct
         if "noCheck" in kwargs:
@@ -272,6 +274,7 @@ class Network:
                 layerT = self._layers[i].T
                 errors[i - 1] = layerT @ errors[i]
 
+    # This is the one above, except it doesn't change the network. This is for testing purposes
     def backpropagateNonDualNoChange(self, inputData, **kwargs):
         # For improved speed when we are sure that the data is correct
         if "noCheck" in kwargs:
@@ -327,6 +330,7 @@ class Network:
                 layerT = self._layers[i].T
                 errors[i - 1] = layerT @ errors[i]
 
+    # Backpropagate over two networks (generator and discriminator) and adjust the networks
     def backpropagateDual(self, net, inputData, targetData, **kwargs):
         # For improved speed when we are sure that the data is correct
         if "noCheck" in kwargs:
@@ -392,6 +396,7 @@ class Network:
                 layerT = self._layers[i].T
                 errors[i] = layerT @ errors[i + 1]
 
+    # Same as the function above, except it doesn't adjust the network. This is for testing purposes
     def backpropagateDualNoChange(self, net, inputData, targetData, **kwargs):
         # For improved speed when we are sure that the data is correct
         if "noCheck" in kwargs:
