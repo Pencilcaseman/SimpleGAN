@@ -217,170 +217,64 @@ class Network:
                 layerT = self._layers[i].T
                 errors[i - 1] = layerT @ errors[i]
 
-    # Backpropagation for a GAN, except it ignores the discriminator and just calculates the errors
-    def backpropagateNonDual(self, inputData, **kwargs):
-        # For improved speed when we are sure that the data is correct
-        if "noCheck" in kwargs:
-            inputs = inputData.copy()
-        else:
-            inputs = self.__parseData(inputData)
-
-        layerData = []
-        errors = [None for _ in range(len(self._nodeCounts) - 1)]
-
-        current = inputs.copy()
-        for i in range(len(self._nodeCounts) - 1):
-            current = self._layers[i] @ current
-            current += self._biases[i]
-            current.map(self._activations[i])
-
-            layerData.append(current.copy())
-
-        # errors[-1] = targets - layerData[-1]
-        # Hard-coded error function
-        errors[-1] = lpm.matrix.Matrix(self._nodeCounts[-1])
-        for i in range(100):
-            theta = math.atan2(layerData[-1][i + 100, 0], layerData[-1][i, 0])
-            px = math.cos(theta)
-            py = math.sin(theta)
-
-            dx = px - layerData[-1][i, 0]
-            dy = py - layerData[-1][i + 100, 0]
-
-            errors[-1][i, 0] = dx
-            errors[-1][i + 100, 0] = dy
-
-        if self._metrics["loss"][1] and self._backpropagateCount % self._metricMod["loss"] == 0:
-            self._metrics["loss"][0].append(errors[-1].mean() ** 2)
-
-        self._backpropagateCount += 1
-
-        for i in range(len(self._nodeCounts) - 2, -1, -1):
-            gradient = layerData[i].mapped(self._activations[i] << 5)
-            gradient *= errors[i]
-            gradient *= self._learningRate
-
-            if i > 0:
-                transposed = layerData[i - 1].T
-            else:
-                transposed = inputs.T
-
-            weight_deltas = gradient @ transposed
-
-            self._layers[i] += weight_deltas
-            self._biases[i] += gradient
-
-            if i > 0:
-                layerT = self._layers[i].T
-                errors[i - 1] = layerT @ errors[i]
-
-    # This is the one above, except it doesn't change the network. This is for testing purposes
-    def backpropagateNonDualNoChange(self, inputData, **kwargs):
-        # For improved speed when we are sure that the data is correct
-        if "noCheck" in kwargs:
-            inputs = inputData.copy()
-        else:
-            inputs = self.__parseData(inputData)
-
-        layerData = []
-        errors = [None for _ in range(len(self._nodeCounts) - 1)]
-
-        current = inputs.copy()
-        for i in range(len(self._nodeCounts) - 1):
-            current = self._layers[i] @ current
-            current += self._biases[i]
-            current.map(self._activations[i])
-
-            layerData.append(current.copy())
-
-        # errors[-1] = targets - layerData[-1]
-        # Hard-coded error function
-        errors[-1] = lpm.matrix.Matrix(self._nodeCounts[-1])
-        for i in range(100):
-            theta = math.atan2(layerData[-1][i + 100, 0], layerData[-1][i, 0])
-            px = math.cos(theta)
-            py = math.sin(theta)
-
-            dx = px - layerData[-1][i, 0]
-            dy = py - layerData[-1][i + 100, 0]
-
-            errors[-1][i, 0] = dx
-            errors[-1][i + 100, 0] = dy
-
-        print(errors[-1])
-
-        if self._metrics["loss"][1] and self._backpropagateCount % self._metricMod["loss"] == 0:
-            self._metrics["loss"][0].append(errors[-1].mean() ** 2)
-
-        self._backpropagateCount += 1
-
-        for i in range(len(self._nodeCounts) - 2, -1, -1):
-            gradient = layerData[i].mapped(self._activations[i] << 5)
-            gradient *= errors[i]
-            gradient *= self._learningRate
-
-            if i > 0:
-                transposed = layerData[i - 1].T
-            else:
-                transposed = inputs.T
-
-            weight_deltas = gradient @ transposed
-
-            if i > 0:
-                layerT = self._layers[i].T
-                errors[i - 1] = layerT @ errors[i]
-
     # Backpropagate over two networks (generator and discriminator) and adjust the networks
-    def backpropagateDual(self, net, inputData, targetData, **kwargs):
+    @staticmethod
+    def backpropagateDual(netA, netB, inputData, targetData, **kwargs):
         # For improved speed when we are sure that the data is correct
         if "noCheck" in kwargs:
             inputs = inputData.copy()
             targets = targetData.copy()
         else:
-            inputs = self.__parseData(inputData)
-            targets = net.__parseData(targetData, layer=-1)
+            # Parse the input based on netA, and the output based on netB
+            inputs = netA.__parseData(inputData)
+            targets = netB.__parseData(targetData, layer=-1)
 
-        # Lengths
-        selfLen = len(self._nodeCounts)
-        netLen = len(net._nodeCounts)
+        netALen = len(netA._nodeCounts)
+        netBLen = len(netB._nodeCounts)
 
-        # Layer info
         layerData = []
-        errors = [None for _ in range(selfLen + netLen - 1)]
+        errors = [None for _ in range(netALen + netBLen - 1)]
 
         current = inputs.copy()
-        for i in range(selfLen + netLen - 1):
-            if i < selfLen - 1:
-                current = self._layers[i] @ current
-                current += self._biases[i]
-                current.map(self._activations[i])
+        for i in range(netALen + netBLen - 1):
+            if i < netALen - 1:
+                current = netA._layers[i] @ current
+                current += netA._biases[i]
+                current.map(netA._activations[i])
 
                 layerData.append(current.copy())
-            elif i - selfLen >= 0:
-                current = net._layers[i - selfLen] @ current
-                current += net._biases[i - selfLen]
-                current.map(net._activations[i - selfLen])
+            elif i - netALen >= 0:
+                current = netB._layers[i - netALen] @ current
+                current += netB._biases[i - netALen]
+                current.map(netB._activations[i - netALen])
 
                 layerData.append(current.copy())
 
-        # Initial error
-        # errors[-1] = targets - layerData[-1]
         errors[-1] = targets - layerData[-1]
 
-        self._backpropagateCount += 1
+        if netA._metrics["loss"][1] and netA._backpropagateCount % netA._metricMod["loss"] == 0:
+            netA._metrics["loss"][0].append(errors[-1].mean() ** 2)
 
-        # Update the loss for the first network
-        if self._metrics["loss"][1] and self._backpropagateCount % self._metricMod["loss"] == 0:
-            self._metrics["loss"][0].append(errors[-1].mean() ** 2)
+        # print(errors[-1])
 
-        for i in range(selfLen + netLen - 2, selfLen - 1, -1):
-            layerT = net._layers[i - selfLen].T
+        netA._backpropagateCount += 1
+
+        for i in range(netALen + netBLen - 2, netALen - 1, -1):
+            gradient = layerData[i - 1].mapped(netB._activations[i - netALen] << 5)
+            gradient *= errors[i]
+            gradient *= netB._learningRate
+
+            transposed = layerData[i - 2].T
+
+            weight_deltas = gradient @ transposed
+
+            layerT = (netB._layers[i - netALen] + weight_deltas).T
             errors[i - 1] = layerT @ errors[i]
 
-        for i in range(len(self._nodeCounts) - 2, -1, -1):
-            gradient = layerData[i].mapped(self._activations[i] << 5)
+        for i in range(netALen - 2, -1, -1):
+            gradient = layerData[i].mapped(netA._activations[i] << 5)
             gradient *= errors[i + 1]
-            gradient *= self._learningRate
+            gradient *= netA._learningRate
 
             if i > 0:
                 transposed = layerData[i - 1].T
@@ -389,80 +283,11 @@ class Network:
 
             weight_deltas = gradient @ transposed
 
-            self._layers[i] += weight_deltas
-            self._biases[i] += gradient
+            netA._layers[i] += weight_deltas
+            netA._biases[i] += gradient
 
             if i > 0:
-                layerT = self._layers[i].T
-                errors[i] = layerT @ errors[i + 1]
-
-    # Same as the function above, except it doesn't adjust the network. This is for testing purposes
-    def backpropagateDualNoChange(self, net, inputData, targetData, **kwargs):
-        # For improved speed when we are sure that the data is correct
-        if "noCheck" in kwargs:
-            inputs = inputData.copy()
-            targets = targetData.copy()
-        else:
-            inputs = self.__parseData(inputData)
-            targets = net.__parseData(targetData, layer=-1)
-
-        # Lengths
-        selfLen = len(self._nodeCounts)
-        netLen = len(net._nodeCounts)
-
-        # Layer info
-        layerData = []
-        errors = [None for _ in range(selfLen + netLen - 1)]
-
-        current = inputs.copy()
-        for i in range(selfLen + netLen - 1):
-            if i < selfLen - 1:
-                current = self._layers[i] @ current
-                current += self._biases[i]
-                current.map(self._activations[i])
-
-                layerData.append(current.copy())
-            elif i - selfLen >= 0:
-                current = net._layers[i - selfLen] @ current
-                current += net._biases[i - selfLen]
-                current.map(net._activations[i - selfLen])
-
-                layerData.append(current.copy())
-
-        # Initial error
-        # errors[-1] = targets - layerData[-1]
-        errors[-1] = targets - layerData[-1]
-
-        self._backpropagateCount += 1
-
-        # Update the loss for the first network
-        if self._metrics["loss"][1] and self._backpropagateCount % self._metricMod["loss"] == 0:
-            self._metrics["loss"][0].append(errors[-1].mean() ** 2)
-
-        for i in range(selfLen + netLen - 2, selfLen - 1, -1):
-            layerT = net._layers[i - selfLen].T
-            errors[i - 1] = layerT @ errors[i]
-
-        print("Error final:")
-        print(errors[selfLen + netLen - 2])
-
-        print("Error:")
-        print(errors[selfLen - 1])
-
-        for i in range(len(self._nodeCounts) - 2, -1, -1):
-            gradient = layerData[i].mapped(self._activations[i] << 5)
-            gradient *= errors[i + 1]
-            gradient *= self._learningRate
-
-            if i > 0:
-                transposed = layerData[i - 1].T
-            else:
-                transposed = inputs.T
-
-            weight_deltas = gradient @ transposed
-
-            if i > 0:
-                layerT = self._layers[i].T
+                layerT = netA._layers[i].T
                 errors[i] = layerT @ errors[i + 1]
 
     def log(self, metric, mod=1):

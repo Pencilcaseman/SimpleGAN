@@ -15,15 +15,18 @@ ZERO[0, 0] = 0
 
 # Generate a circle with some standard deviation (std)
 def generateNoise(points, std=0.1):
-    res = []
+    xPos = []
+    yPos = []
     theta = 0
-    inc = math.pi * 2 / points
+    inc = (math.pi * 2) / points
 
     while theta < math.pi * 2:
-        res.append([math.cos(theta) + random.uniform(-std / 2, std / 2), math.sin(theta) + random.uniform(-std / 2, std / 2)])
+        xPos.append(math.cos(theta) + random.uniform(-std / 2, std / 2))
+        yPos.append(math.sin(theta) + random.uniform(-std / 2, std / 2))
+
         theta += inc
 
-    return res[:points]
+    return xPos[:points] + yPos[:points]
 
 
 # The training data
@@ -31,15 +34,7 @@ data = []
 
 # Generate training data
 for i in range(1000):
-    points = generateNoise(100, std=0 if i != 0 else 0.5)
-    x = []
-    y = []
-
-    for p in points:
-        x.append(p[0])
-        y.append(p[1])
-
-    data.append(x + y)
+    data.append(generateNoise(100, std=0 if i != 0 else 0.5))
 
 # The generator network
 generator = network.Network(layers=(5, 70, 200), lr=0.02, activations=[lpm.network.TANH] * 2)
@@ -52,7 +47,7 @@ generator.log("loss", 1)
 
 
 # ============================================================================================ #
-# =================== Actual training of the GAN and testing it's output # =================== #
+# =================== Actual training of the GAN and testing it's output ===================== #
 # ============================================================================================ #
 
 # Train the GAN. NOT WORKING....
@@ -72,56 +67,58 @@ def trainGAN(gen, disc, image):
     # Backpropagate over both networks to train the generator without training the discriminator.
     # The output of this should be 1 as the generator's output through the discriminator should
     # mimic a real dog image
+    network.Network.backpropagateDual(gen, disc, noise, ONE)
 
-    # network.Network.backpropagateDual(gen, disc, noise, ONE)
+if False:
+    for i in lpm.progress.Progress(range(100000)):
+        op = random.randint(0, 2)
 
-    # Using this one as it uses equations to calculate the error perfectly
-    # It simply replaces the discriminator
-    network.Network.backpropagateNonDual(gen, noise)
+        if op == 0:
+            # Generate a perfect circle
+            inputData = generateNoise(100, 0)
+            output = 1
+        elif op == 1:
+            # Generate a circle with std=0.1
+            inputData = generateNoise(100, random.uniform(0.05, 0.5))
+            output = 1
+        elif op == 2:
+            # Generate random noise
+            inputData = [random.uniform(-1, 1) for _ in range(200)]
+            output = 0
+        else:
+            print("The matrix has broken")
 
+            # Purely so that the linting doesn't highlight something
+            inputData = []
+            output = 0
 
-# Generate the noise -- same noise for testing purposes
-noise = lpm.matrix.Matrix(data=[random.uniform(-1, 1) for _ in range(5)], rows=5)
+            exit()
 
-# Get the untrained generator's output from the generated noise
-preTrain = generator.feedForward(noise)
+        discriminator.backpropagate(inputData, [output])
 
-# Train the generator
-for i in lpm.progress.Progress(range(10000)):
-    # Don't pick the first bit of data -- it is for testing purposes
-    index = random.randint(1, len(data) - 1)
+print("Discriminator on data (std=0)   (1):", discriminator.feedForward(generateNoise(100, 0)))
+print("Discriminator on data (std=0.1) (1):", discriminator.feedForward(generateNoise(100, 0.1)))
+print("Discriminator on data (std=0.2) (1):", discriminator.feedForward(generateNoise(100, 0.2)))
+print("Discriminator on data (std=0.3) (1):", discriminator.feedForward(generateNoise(100, 0.3)))
+print("Discriminator on data (std=0.4) (1):", discriminator.feedForward(generateNoise(100, 0.4)))
+print("Discriminator on data (std=0.5) (1):", discriminator.feedForward(generateNoise(100, 0.5)))
+print("Discriminator on data (random)  (0):", discriminator.feedForward([random.uniform(-1, 1) for _ in range(200)]))
 
-    # Train the GAN (sort of)
-    trainGAN(generator, discriminator, data[index])
+print("\n=====================================================\n")
 
-# Get the output of the generator after training (using the equations
-postTrain = generator.feedForward(noise)
+print("Getting untrained generator output")
+untrained = generator.feedForward([random.uniform(-1, 1) for _ in range(5)])
 
-# Now train the GAN using the discriminator (which has been trained) -- this is for testing purposes to see what happens
-for i in lpm.progress.Progress(range(10000)):
-    network.Network.backpropagateDual(generator, discriminator, noise, lpm.matrix.Matrix(data=[[1]], rows=1))
+print("Training the generator")
+for i in lpm.progress.Progress(range(100000)):
+    # network.Network.backpropagateDual(generator, discriminator, lpm.matrix.Matrix(data=[random.uniform(-1, 1) for _ in range(5)]), lpm.matrix.Matrix(data=[[1]]))
+    trainGAN(generator, discriminator, data[random.randint(0, len(data) - 1)])
 
-# Get the output of the generator after training using the
-# discriminator (it *should* be the same / better as the output after training initially)
-finalTrain = generator.feedForward(noise)
+trained = generator.feedForward([random.uniform(-1, 1) for _ in range(5)])
 
-# Plot some graphs
-plt.scatter(data[0][:100], data[0][100:])
-plt.scatter(data[1][:100], data[1][100:])
-plt.scatter(preTrain.toList()[:100], preTrain.toList()[100:])
-plt.scatter(postTrain.toList()[:100], postTrain.toList()[100:])
-plt.scatter(finalTrain.toList()[:100], finalTrain.toList()[100:])
+print("Discriminator on untrained:", discriminator.feedForward(untrained))
+print("Discriminator on trained  :", discriminator.feedForward(trained))
+
+plt.scatter(untrained.toList()[:100], untrained.toList()[100:], color="red")
+plt.scatter(trained.toList()[:100], untrained.toList()[100:], color="green")
 plt.show()
-
-# Print some info
-print("Discriminator on pre-trained     :", discriminator.feedForward(preTrain))
-print("Discriminator on trained         :", discriminator.feedForward(postTrain))
-print("Discriminator on dataset (noisy) :", discriminator.feedForward(data[0]))
-print("Discriminator on dataset (clean) :", discriminator.feedForward(data[1]))
-
-print("\n\n\n\n\n\n\n")
-
-# This is some testing
-network.Network.backpropagateDualNoChange(generator, discriminator, noise, lpm.matrix.Matrix(data=[[1]], rows=1))
-print("\n")
-network.Network.backpropagateNonDualNoChange(generator, noise)
