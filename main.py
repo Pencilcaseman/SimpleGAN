@@ -69,8 +69,8 @@ def trainGAN(gen, disc, image):
     # mimic a real dog image
     network.Network.backpropagateDual(gen, disc, noise, ONE)
 
-if False:
-    for i in lpm.progress.Progress(range(100000)):
+if True:
+    for i in lpm.progress.Progress(range(10000)):
         op = random.randint(0, 2)
 
         if op == 0:
@@ -110,7 +110,7 @@ print("Getting untrained generator output")
 untrained = generator.feedForward([random.uniform(-1, 1) for _ in range(5)])
 
 print("Training the generator")
-for i in lpm.progress.Progress(range(100000)):
+for i in lpm.progress.Progress(range(10000)):
     # network.Network.backpropagateDual(generator, discriminator, lpm.matrix.Matrix(data=[random.uniform(-1, 1) for _ in range(5)]), lpm.matrix.Matrix(data=[[1]]))
     trainGAN(generator, discriminator, data[random.randint(0, len(data) - 1)])
 
